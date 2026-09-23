@@ -1,0 +1,97 @@
+# Copie ce fichier en config.yaml puis adapte-le.
+# config.yaml est dans .gitignore : il ne sera jamais committe.
+
+ollama:
+  host: "http://127.0.0.1:11434"
+  # Modele principal (chat, synthese, appel d'outils)
+  chat_model: "qwen3.5:4b"
+  # Modele du tri des mails. Garder le meme que chat_model evite un troisieme modele
+  # en VRAM : sur 8 Go, qwen3.5:4b + qwen3-embedding tiennent ensemble, pas un de plus.
+  # qwen3.5:2b est deux fois plus rapide (1,0 s/mail contre 1,9 s) mais se trompe
+  # plus souvent de categorie.
+  triage_model: "qwen3.5:4b"
+  # Modele d'embeddings pour la recherche semantique
+  embed_model: "qwen3-embedding:0.6b"
+  embed_dim: 1024
+  # IMPORTANT sur 8 Go de VRAM : Qwen3.5 annonce 256k de contexte.
+  # Si on ne borne pas num_ctx, le cache KV deborde en RAM et tout ralentit.
+  num_ctx: 32768
+  # Contexte reduit pour le tri (un mail a la fois)
+  triage_num_ctx: 8192
+  # Duree de maintien des modeles en VRAM
+  keep_alive: "15m"
+  request_timeout: 300
+
+paths:
+  # Base SQLite (documents, chunks, vecteurs)
+  db: "data/assistant.db"
+  # Identifiants et jeton Google, volontairement HORS du repo :
+  #  - aucun risque de commit accidentel,
+  #  - jamais atteints par l'indexation de fichiers (qui indexe les .json),
+  #  - conserves si tu supprimes ou reclones le depot.
+  # Un chemin relatif serait resolu depuis la racine du projet ; ~ est etendu.
+  google_client_secret: "~/.local-assistant/secrets/client_secret.json"
+  # Jeton OAuth genere localement par `assistant auth` : c'est LE fichier sensible,
+  # il donne acces en lecture aux mails jusqu'a revocation.
+  google_token: "~/.local-assistant/secrets/token.json"
+
+gmail:
+  # Nombre de mails recuperes lors de la premiere synchro
+  initial_backfill: 500
+  # Requete Gmail appliquee a la synchro (syntaxe de la barre de recherche Gmail).
+  # "-in:spam -in:trash" rapatrie toute la boite : reception, archives et envoyes,
+  # que l'interface separe en onglets. Mets "in:inbox" pour n'indexer que la boite
+  # de reception (synchro plus rapide, mais onglets Archives/Envoyes vides).
+  # Changer cette valeur declenche une resynchronisation complete au prochain `sync`.
+  query: "-in:spam -in:trash"
+  # Intervalle de verification des nouveaux mails, en secondes
+  poll_seconds: 120
+
+calendar:
+  # "*" = tous les agendas auxquels le compte a acces, y compris ceux ajoutes plus
+  # tard. Remplace par une liste d'identifiants pour n'en garder que certains.
+  calendar_ids: ["*"]
+  # Agendas a ignorer. Un motif correspond s'il apparait dans le NOM affiche de
+  # l'agenda ou dans son identifiant. Accents et majuscules sont ignores.
+  # `assistant calendars` liste les agendas indexes avec leur nom.
+  # Les agendas d'abonnement (jours feries, ephemerides, calendriers sportifs)
+  # noient les vrais rendez-vous : mieux vaut les ecarter.
+  exclude_patterns: ["#weeknum@"]
+  # Fenetre indexee autour d'aujourd'hui
+  past_days: 30
+  future_days: 90
+  poll_seconds: 600
+
+files:
+  # === A REMPLIR : les dossiers a indexer ===
+  roots: []
+  # Exemple :
+  # roots:
+  #   - "C:/Users/<toi>/Documents"
+  #   - "C:/Users/<toi>/Downloads"
+
+  extensions: [".txt", ".md", ".pdf", ".docx", ".xlsx", ".csv", ".json", ".yaml", ".yml"]
+  exclude_dirs: [".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build",
+                 "AppData", ".cache", "Repositories"]
+  max_file_mb: 25
+
+triage:
+  enabled: true
+  # Seuil d'urgence (1-5) au-dela duquel une notification Windows s'affiche
+  notify_min_urgency: 4
+  # Expediteurs toujours notifies, quelle que soit l'urgence estimee
+  vip: []
+  # Notifier uniquement pendant ces heures (format 24h, null pour desactiver)
+  quiet_hours: { start: 22, end: 8 }
+
+web:
+  host: "127.0.0.1"
+  port: 8765
+  # Ouvrir le navigateur au demarrage
+  open_browser: true
+
+retrieval:
+  # Nombre de chunks remontes au LLM par recherche
+  top_k: 8
+  chunk_chars: 1200
+  chunk_overlap: 150

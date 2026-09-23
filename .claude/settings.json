@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./secrets/**)",
+      "Read(~/.local-assistant/**)",
+      "Edit(./secrets/**)",
+      "Edit(~/.local-assistant/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Read|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "grep -qiE 'client_secret\\.json|token\\.json|secrets[/\\\\]|[.]local-assistant' && printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Fichiers de secrets Google : lecture interdite par .claude/settings.json. Ces identifiants ne doivent jamais entrer dans le contexte de l assistant.\"}}' || true",
+            "timeout": 10,
+            "statusMessage": "Verification des chemins sensibles"
+          }
+        ]
+      }
+    ]
+  }
+}

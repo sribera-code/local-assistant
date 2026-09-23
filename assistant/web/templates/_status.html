@@ -1,0 +1,5 @@
+<span class="status" title="{{ status.last_report or '' }}">
+  {% if status.last_sync %}Synchronisé à {{ status.last_sync[:5] }}
+  {% elif status.background_sync %}Synchronisation…
+  {% else %}Synchro auto désactivée{% endif %}
+</span>

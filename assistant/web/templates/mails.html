@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+{# Suffixe commun a tous les liens de la colonne : changer de dossier ou de filtre ne
+   doit pas faire perdre l'autre reglage. #}
+{% set qs = "folder=" ~ folder ~ ("&urgent=true" if urgent else "") %}
+<div class="split">
+  <section class="column list-col">
+    <div class="resizer" data-resize="list" role="separator" aria-orientation="vertical"
+         aria-label="Redimensionner la liste" tabindex="0" title="Glisser pour redimensionner (double-clic : taille par défaut)"></div>
+
+    {# Gmail n'a pas de dossiers : ces onglets suivent les labels (INBOX, SENT...). #}
+    <div class="col-head folders" role="tablist" aria-label="Dossiers">
+      {% for key, label in folders %}
+      <a class="folder-tab{% if key == folder %} active{% endif %}" role="tab"
+         aria-selected="{{ 'true' if key == folder else 'false' }}"
+         href="/?folder={{ key }}{% if urgent and key != 'sent' %}&urgent=true{% endif %}">
+        {{ label }}{% if counts[key] %}<span class="tab-count">{{ counts[key] }}</span>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+
+    {# Les mails envoyes ne passent pas par le tri : le filtre d'urgence n'a rien a y filtrer. #}
+    {% if folder != "sent" %}
+    <div class="col-subhead">
+      <div class="filter">
+        <a class="filter-opt{% if not urgent %} active{% endif %}" href="/?folder={{ folder }}">Tous</a>
+        <a class="filter-opt{% if urgent %} active{% endif %}" href="/?folder={{ folder }}&urgent=true">Importants</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Rafraichi toutes les minutes ; `selected` garde le mail ouvert en surbrillance. #}
+    <div id="mails" class="col-body"
+         hx-get="/fragment/mails?{{ qs }}"
+         hx-vals='js:{selected: window.selectedMail || ""}'
+         hx-trigger="every 60s, refresh" hx-swap="innerHTML">
+      {% include "_mails.html" %}
+    </div>
+  </section>
+
+  <section class="column reader-col" id="mail-detail">
+    {% include "_mail_detail.html" %}
+  </section>
+</div>
+<script>window.selectedMail = {{ selected | tojson }};</script>
+{% endblock %}

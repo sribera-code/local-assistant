@@ -1,0 +1,20 @@
+{# Messages d'une conversation : rendus dans la page, ou seuls lors d'un changement d'onglet. #}
+{% if not history %}
+<div class="empty">
+  <p class="empty-title">Pose une question</p>
+  <p>Sur tes mails, ton agenda ou tes cours. Tout reste sur ta machine.</p>
+  <div class="suggestions">
+    <button onclick="askExample(this)">Qu'est-ce qui demande une réponse de ma part ?</button>
+    <button onclick="askExample(this)">Qu'est-ce que j'ai de prévu cette semaine ?</button>
+    <button onclick="askExample(this)">Dans quel cours parle-t-on de ce sujet ?</button>
+  </div>
+</div>
+{% endif %}
+{% for msg in history %}
+{# data-citations permet a app.js de rendre cliquables les [42] de l'historique.
+   Guillemets SIMPLES obligatoires : tojson echappe < > & ' mais pas ", qui
+   fermerait l'attribut au premier titre de mail. #}
+<div class="msg {{ msg.role }}" data-citations='{{ msg.citations | tojson }}'>
+  <div class="bubble">{{ msg.content }}</div>
+</div>
+{% endfor %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% macro evenement(e, style="") %}
+<a class="ev{% if e.compact %} compact{% endif %}"
+   {% if e.url %}href="{{ e.url }}" target="_blank" rel="noreferrer"{% endif %}
+   style="{{ style }}{% if e.color %}--cal: {{ e.color }};{% endif %}"
+   title="{{ e.title }} · {{ e.start }}–{{ e.end }}{% if e.calendar %} · {{ e.calendar }}{% endif %}{% if e.location %} · {{ e.location }}{% endif %}">
+  <span class="ev-title">{{ e.title }}</span>
+  <span class="ev-time">{{ e.start }}{% if not e.compact %} – {{ e.end }}{% endif %}</span>
+  {% if not e.compact and (e.location or e.attendees) %}
+  <span class="ev-meta">
+    {% if e.location %}<svg class="ico tiny"><use href="#i-pin"/></svg>{{ e.location }}{% endif %}
+    {% if e.attendees %}<svg class="ico tiny"><use href="#i-users"/></svg>{{ e.attendees }}{% endif %}
+  </span>
+  {% endif %}
+</a>
+{% endmacro %}
+
+{% block content %}
+<section class="column agenda-col">
+  <div class="col-head agenda-head">
+    <div class="week-nav">
+      <a class="btn-soft" href="/agenda">Aujourd'hui</a>
+      <a class="icon-btn" href="/agenda?semaine={{ prev_week }}" aria-label="Semaine précédente"><svg class="ico"><use href="#i-left"/></svg></a>
+      <a class="icon-btn" href="/agenda?semaine={{ next_week }}" aria-label="Semaine suivante"><svg class="ico"><use href="#i-right"/></svg></a>
+      <h2 class="week-label">{{ week_label }}</h2>
+    </div>
+    <ul class="legend">
+      {% for c in legend %}
+      <li><span class="swatch"{% if c.color %} style="--cal: {{ c.color }}"{% endif %}></span>{{ c.name }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="cal" style="--hour: {{ week.hour_px }}px">
+    <div class="cal-row cal-days">
+      <div class="cal-gutter"></div>
+      {% for d in week.days %}
+      <div class="cal-day-head{% if d.is_today %} today{% endif %}">
+        <span class="dow">{{ d.dow }}</span>
+        <span class="dnum">{{ d.date.day }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if week.has_all_day %}
+    <div class="cal-row cal-allday">
+      <div class="cal-gutter">Journée</div>
+      {% for d in week.days %}
+      <div class="cal-allday-cell">
+        {% for e in d.all_day %}
+        <a class="chip"{% if e.url %} href="{{ e.url }}" target="_blank" rel="noreferrer"{% endif %}
+           {% if e.color %}style="--cal: {{ e.color }}"{% endif %} title="{{ e.title }}">{{ e.title }}</a>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="cal-scroll" id="cal-scroll" data-scroll="{{ week.scroll_to }}">
+      <div class="cal-row cal-grid" style="height: {{ week.grid_height }}px">
+        <div class="cal-gutter cal-hours">
+          {% for h in week.hours %}<span style="top: {{ loop.index0 * week.hour_px }}px">{{ h }}</span>{% endfor %}
+        </div>
+        {% for d in week.days %}
+        <div class="cal-col{% if d.is_today %} today{% endif %}">
+          {% for e in d.timed %}
+          {{ evenement(e, "top: %dpx; height: %dpx; left: calc(%s%% + 2px); width: calc(%s%% - 4px);" % (e.top, e.height, e.left, e.width)) }}
+          {% endfor %}
+          {% if d.is_today and week.now_top is not none %}
+          <div class="now" style="top: {{ week.now_top }}px"></div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

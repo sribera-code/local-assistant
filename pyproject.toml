@@ -1,0 +1,43 @@
+[project]
+name = "local-assistant"
+version = "0.1.0"
+description = "Assistant local : Gmail + Google Agenda + fichiers locaux, via un LLM Ollama. Aucune donnee ne quitte la machine."
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    # Coeur
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+    # Stockage / recherche
+    "sqlite-vec>=0.1.6",
+    # Interface web locale
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    # Google (lecture seule)
+    "google-api-python-client>=2.140",
+    "google-auth-oauthlib>=1.2",
+    # Extraction de fichiers
+    "pypdf>=4.3",
+    # Decodage des polices Type1/CFF des PDF LaTeX (symboles mathematiques)
+    "fonttools>=4.50",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    # Notifications Windows
+    "win11toast>=0.35; sys_platform == 'win32'",
+]
+
+[project.scripts]
+assistant = "assistant.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["assistant"]
+
+[tool.ruff]
+line-length = 100

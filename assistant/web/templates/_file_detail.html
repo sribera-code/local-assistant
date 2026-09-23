@@ -1,0 +1,42 @@
+{% if not detail %}
+<div class="reader-empty">
+  <svg class="ico big"><use href="#i-folder"/></svg>
+  <p>Sélectionne un fichier pour voir ce que l'assistant en a extrait.</p>
+</div>
+{% else %}
+<article class="reader">
+  <div class="reader-toolbar">
+    <button class="ghost-btn accent" onclick="askAbout(this)"
+            data-doc="{{ detail.doc_id }}" data-kind="file" data-title="{{ detail.name }}">
+      <svg class="ico"><use href="#i-spark"/></svg> Résumer ce document
+    </button>
+    <button class="ghost-btn" onclick="openFile({{ detail.doc_id }}, this)">
+      <svg class="ico"><use href="#i-external"/></svg> Ouvrir le fichier
+    </button>
+  </div>
+
+  <div class="file-hero">
+    <span class="file-badge ext-{{ detail.ext }}">
+      <svg class="ico"><use href="#i-file"/></svg>
+      <span>{{ detail.ext or "?" }}</span>
+    </span>
+    <div>
+      <h1 class="reader-title">{{ detail.name }}</h1>
+      <p class="file-path">{{ detail.folder }}</p>
+    </div>
+  </div>
+
+  <dl class="facts">
+    <div><dt>Modifié</dt><dd>{{ detail.modified.strftime("%d/%m/%Y") if detail.modified else "—" }}</dd></div>
+    <div><dt>Taille</dt><dd>{{ "{:,}".format(detail.size_kb).replace(",", " ") }} Ko</dd></div>
+    <div><dt>Texte indexé</dt><dd>{{ "{:,}".format(detail.chars).replace(",", " ") }} car.</dd></div>
+    <div><dt>Passages</dt><dd>{{ detail.chunks }}</dd></div>
+  </dl>
+
+  <h3 class="section-label">Texte extrait</h3>
+  <div class="extract">{{ detail.extract }}</div>
+  {% if detail.truncated %}
+  <p class="reader-note">Aperçu limité au début du document. L'assistant, lui, a indexé le texte entier.</p>
+  {% endif %}
+</article>
+{% endif %}

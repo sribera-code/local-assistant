@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{# Macro recursive : un dossier affiche ses sous-dossiers puis ses fichiers.
+   <details> donne le pliage/depliage sans une ligne de JavaScript. #}
+{% macro dossier(noeud, niveau=0) %}
+<details class="folder"{% if niveau == 0 %} open{% endif %}>
+  <summary>
+    <svg class="ico caret"><use href="#i-chevron"/></svg>
+    <svg class="ico folder-ico"><use href="#i-folder"/></svg>
+    <span class="folder-name">{{ noeud.name }}</span>
+    <span class="folder-count">{{ noeud.count }}</span>
+  </summary>
+  <ul>
+    {% for enfant in noeud.children %}
+    <li>{{ dossier(enfant, niveau + 1) }}</li>
+    {% endfor %}
+    {% for f in noeud.files %}
+    <li>
+      <a class="file{% if f.doc_id == selected %} selected{% endif %}" href="/fichiers?f={{ f.doc_id }}"
+         data-id="{{ f.doc_id }}"
+         hx-get="/fragment/file/{{ f.doc_id }}" hx-target="#file-detail"
+         hx-replace-url="/fichiers?f={{ f.doc_id }}" onclick="selectItem(this, 'selectedFile')">
+        <svg class="ico file-ico ext-{{ f.ext }}"><use href="#i-file"/></svg>
+        <span class="file-name">{{ f.name }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</details>
+{% endmacro %}
+
+{% block content %}
+<div class="split">
+  <section class="column list-col">
+    <div class="resizer" data-resize="list" role="separator" aria-orientation="vertical"
+         aria-label="Redimensionner l'arbre" tabindex="0" title="Glisser pour redimensionner (double-clic : taille par défaut)"></div>
+    <div class="col-head">
+      <h2>Fichiers</h2>
+      <button class="btn-soft small" onclick="toggleTree(this)">Tout déplier</button>
+    </div>
+    <div class="col-body tree">
+      {% if not tree %}
+      <div class="list-empty">Aucun dossier n'est configuré dans <code>files.roots</code>.</div>
+      {% endif %}
+      {% for racine in tree %}{{ dossier(racine) }}{% endfor %}
+    </div>
+  </section>
+
+  <section class="column reader-col" id="file-detail">
+    {% include "_file_detail.html" %}
+  </section>
+</div>
+{% endblock %}

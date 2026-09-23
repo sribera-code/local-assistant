@@ -1,0 +1,101 @@
+{% if not detail %}
+<div class="reader-empty">
+  <svg class="ico big"><use href="#i-mail"/></svg>
+  <p>Sélectionne un mail pour le lire ici.</p>
+</div>
+{% else %}
+{# En-tete fixe, corps qui defile seul : l'objet, l'expediteur et l'analyse restent
+   visibles pendant la lecture. #}
+<article class="reader mail-reader" data-view="{{ 'html' if detail.has_html else 'text' }}">
+  <header class="reader-head">
+    <div class="title-row">
+      <h1 class="reader-title">{{ detail.title }}</h1>
+      <div class="reader-toolbar">
+        <button class="ghost-btn accent" onclick="askAbout(this)"
+                data-doc="{{ detail.doc_id }}" data-kind="mail" data-title="{{ detail.title }}">
+          <svg class="ico"><use href="#i-spark"/></svg> Que dois-je en faire ?
+        </button>
+        {% if detail.url %}
+        <a class="ghost-btn" href="{{ detail.url }}" target="_blank" rel="noreferrer">
+          <svg class="ico"><use href="#i-external"/></svg> Ouvrir dans Gmail
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="sender">
+      <span class="avatar lg" style="--h: {{ detail.avatar.teinte }}">{{ detail.avatar.initiales }}</span>
+      <div class="sender-main">
+        <div class="sender-name">
+          {{ detail.author_name }}
+          {% if detail.author_email %}<span class="sender-email">&lt;{{ detail.author_email }}&gt;</span>{% endif %}
+        </div>
+        <div class="sender-to">
+          à {{ detail.to or "moi" }}{% if detail.cc %} · cc {{ detail.cc }}{% endif %}
+        </div>
+      </div>
+      <time class="sender-date">{{ detail.when.strftime("%d/%m/%Y, %H:%M") if detail.when else "" }}</time>
+    </div>
+
+    {% if detail.urgency %}
+    <aside class="insight u{{ detail.urgency }}">
+      <div class="insight-head">
+        <svg class="ico"><use href="#i-spark"/></svg>
+        <span class="insight-label">Analyse</span>
+        <span class="level u{{ detail.urgency }}">{{ detail.urgency_label }}</span>
+        {% if detail.category %}<span class="insight-cat">{{ detail.category }}</span>{% endif %}
+      </div>
+      {% if detail.summary %}<p class="insight-summary">{{ detail.summary }}</p>{% endif %}
+      {# Meme icone que dans la liste : le geste conseille se lit au meme endroit. #}
+      {% if detail.act %}
+      <p class="insight-action a-{{ detail.act.type }}">
+        <svg class="ico tiny"><use href="#{{ detail.act.icon }}"/></svg>
+        <strong>{{ detail.act.label }}</strong>{% if detail.action and detail.action | lower != "rien" %} — {{ detail.action }}{% endif %}
+      </p>
+      {% endif %}
+    </aside>
+    {% endif %}
+
+    {% if detail.attachments %}
+    {# Les pieces jointes ne sont pas telechargees : chacune renvoie au mail dans Gmail. #}
+    <ul class="attachments">
+      {% for a in detail.attachments %}
+      <li><a{% if detail.url %} href="{{ detail.url }}" target="_blank" rel="noreferrer" title="Ouvrir dans Gmail"{% endif %}>
+        <svg class="ico tiny"><use href="#i-clip"/></svg>{{ a }}</a></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if detail.has_html %}
+    <div class="view-bar">
+      {% if detail.remote_images and not detail.images_ok %}
+      <span class="images-note" title="Les charger signalerait à l'expéditeur que tu as lu ce mail (pixels de suivi) et lui donnerait ton adresse IP.">Images distantes masquées.</span>
+      <button class="link-btn" onclick="setImages({{ detail.doc_id }}, 'mail')">Afficher les images</button>
+      <button class="link-btn" onclick="setImages({{ detail.doc_id }}, 'sender')">Toujours pour cet expéditeur</button>
+      {% elif detail.remote_images %}
+      <span class="images-note">Images affichées {{ "pour tous les mails de cet expéditeur" if detail.images_scope == "sender" else "pour ce mail" }}.</span>
+      <button class="link-btn" onclick="setImages({{ detail.doc_id }}, 'none')">Ne plus les afficher</button>
+      {% endif %}
+      <span class="view-switch">
+        <button class="link-btn" onclick="switchView(this, 'text')">Version texte</button>
+        <button class="link-btn" onclick="switchView(this, 'html')">Version mise en forme</button>
+      </span>
+    </div>
+    {% endif %}
+  </header>
+
+  <div class="reader-main">
+    {% if detail.has_html %}
+    {# Isolement complet : sandbox sans aucun droit de script, de formulaire ni
+       d'acces a la page ; seuls les liens peuvent ouvrir un nouvel onglet. #}
+    <iframe class="mail-frame" src="/mail/{{ detail.doc_id }}/html{% if detail.images_ok %}?images=true{% endif %}" title="Contenu du mail"
+            sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
+    {% endif %}
+    <div class="reader-scroll">
+      {# Texte du mail echappe en entier par _mail_html : seuls nos <p> et <a> y figurent. #}
+      <div class="reader-body">{{ detail.body }}</div>
+      <p class="reader-note">Les messages précédents du fil sont masqués ; le fil complet est dans Gmail.</p>
+    </div>
+  </div>
+</article>
+{% endif %}

@@ -1,0 +1,25 @@
+# Secrets Google : ne jamais committer
+secrets/
+*.json
+!config.example.json
+# Regles de protection des secrets cote Claude Code : aucune donnee, a partager.
+!.claude/settings.json
+
+# Donnees locales (index, mails, embeddings)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Config personnelle
+config.yaml
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/

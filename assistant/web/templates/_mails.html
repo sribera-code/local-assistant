@@ -1,0 +1,39 @@
+{% if not mails %}
+<div class="list-empty">
+  {% if urgent %}Aucun mail important en attente.
+  {% elif folder == "archive" %}Aucun mail archivé indexé.
+  {% elif folder == "sent" %}Aucun mail envoyé indexé.
+  {% else %}Ta boîte de réception est vide.{% endif %}
+</div>
+{% endif %}
+<ul class="mail-list">
+  {% for m in mails %}
+  <li class="mail{% if m.unread %} unread{% endif %}{% if m.doc_id == selected %} selected{% endif %}"
+      data-id="{{ m.doc_id }}" tabindex="0"
+      hx-get="/fragment/mail/{{ m.doc_id }}" hx-target="#mail-detail"
+      hx-replace-url="/?mail={{ m.doc_id }}&folder={{ folder }}{% if urgent %}&urgent=true{% endif %}"
+      hx-trigger="click, keyup[key=='Enter']"
+      onclick="selectItem(this, 'selectedMail')">
+    <span class="avatar" style="--h: {{ m.avatar.teinte }}">{{ m.avatar.initiales }}</span>
+    <div class="mail-main">
+      <div class="mail-line">
+        <span class="from">{{ m.author }}</span>
+        {# Une icone pour l'action conseillee : lire la liste sans lire les resumes. #}
+        {% if m.act %}
+        <span class="act a-{{ m.act.type }}" title="{{ m.act.title }}">
+          <svg class="ico tiny"><use href="#{{ m.act.icon }}"/></svg>
+          <span class="sr-only">{{ m.act.label }}</span>
+        </span>
+        {% endif %}
+        {% if m.urgency and m.urgency >= 4 %}<span class="flag u{{ m.urgency }}">{{ m.urgency_label }}</span>{% endif %}
+        <span class="when">{{ m.when_short }}</span>
+      </div>
+      <div class="subject">{{ m.title }}</div>
+      <div class="snippet">
+        {% if m.attachments %}<svg class="ico tiny"><use href="#i-clip"/></svg>{% endif %}
+        {{ m.summary }}
+      </div>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
