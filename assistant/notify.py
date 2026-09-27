@@ -27,7 +27,12 @@ def toast(title: str, body: str, *, url: str | None = None) -> bool:
     if sys.platform != "win32":
         return False
     try:
-        from win11toast import toast as _toast
+        # notify, et surtout pas toast : toast() attend que la notification soit
+        # cliquee ou fermee. Si Windows ne l'affiche pas (notifications de l'application
+        # desactivees, « Ne pas deranger »), cette attente ne finit jamais, et bloque
+        # avec elle la synchro de fond qui l'a appelee. notify() l'affiche et rend la
+        # main ; le clic ouvre quand meme l'URL, par activation « protocol » de Windows.
+        from win11toast import notify as _toast
     except ImportError:
         return False
 

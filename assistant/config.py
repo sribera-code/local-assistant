@@ -31,6 +31,8 @@ class PathsConfig:
     db: str = "data/assistant.db"
     google_client_secret: str = "secrets/client_secret.json"
     google_token: str = "secrets/token.json"
+    # Session Matrix : jeton d'acces, cles de chiffrement, identite du bot.
+    matrix_dir: str = "~/.local-assistant/matrix"
 
     def resolve(self, value: str) -> Path:
         # expanduser() d'abord : sans lui, "~/dossier" serait pris pour un chemin
@@ -49,6 +51,10 @@ class PathsConfig:
     @property
     def token_path(self) -> Path:
         return self.resolve(self.google_token)
+
+    @property
+    def matrix_path(self) -> Path:
+        return self.resolve(self.matrix_dir)
 
 
 @dataclass
@@ -97,6 +103,23 @@ class WebConfig:
 
 
 @dataclass
+class MatrixConfig:
+    # Lance le bot avec `serve` (sinon : `assistant matrix` seul).
+    enabled: bool = False
+    # Vide : deduit de user_id via .well-known.
+    homeserver: str = ""
+    # Compte dedie au bot, distinct du tien.
+    user_id: str = ""
+    # Seuls ces comptes peuvent l'inviter et lui parler.
+    allowed_users: list[str] = field(default_factory=list)
+    device_name: str = "Assistant local"
+    # Resume de chaque nouveau mail (non lu, boite de reception) dans la discussion.
+    mail_notices: bool = True
+    # En dessous de cette urgence, le resume arrive sans faire sonner le telephone.
+    mail_ping_min_urgency: int = 1
+
+
+@dataclass
 class RetrievalConfig:
     top_k: int = 8
     chunk_chars: int = 1200
@@ -112,6 +135,7 @@ class Config:
     files: FilesConfig = field(default_factory=FilesConfig)
     triage: TriageConfig = field(default_factory=TriageConfig)
     web: WebConfig = field(default_factory=WebConfig)
+    matrix: MatrixConfig = field(default_factory=MatrixConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
 
 
@@ -123,6 +147,7 @@ _SECTIONS = {
     "files": FilesConfig,
     "triage": TriageConfig,
     "web": WebConfig,
+    "matrix": MatrixConfig,
     "retrieval": RetrievalConfig,
 }
 

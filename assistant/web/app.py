@@ -46,7 +46,7 @@ templates.env.globals["static"] = _static
 
 TABS = [("mails", "Mails", "/"), ("agenda", "Agenda", "/agenda"), ("fichiers", "Fichiers", "/fichiers")]
 
-URGENCY_LABELS = {5: "critique", 4: "important", 3: "a traiter", 2: "a lire", 1: "rien a faire"}
+URGENCY_LABELS = triage.URGENCY_LABELS
 URGENT_THRESHOLD = 4
 
 # Onglets de la liste de mails. Gmail n'ayant pas de dossiers, chacun correspond a une
@@ -62,16 +62,17 @@ MAIL_FOLDERS = [
 DEFAULT_FOLDER = "inbox"
 
 # Icone et libelle de l'action conseillee par le tri (triage.ACTION_TYPES).
-ACTION_BADGES = {
-    "repondre": ("i-reply", "Répondre"),
-    "payer": ("i-card", "Payer"),
-    "confirmer": ("i-cal-check", "Confirmer"),
-    "document": ("i-pen", "Fournir un document"),
-    "verifier": ("i-shield", "Vérifier le compte"),
-    "traiter": ("i-alert", "À traiter"),
-    "lire": ("i-eye", "À lire"),
-    "rien": ("i-check", "Rien à faire"),
+_ACTION_ICONS = {
+    "repondre": "i-reply",
+    "payer": "i-card",
+    "confirmer": "i-cal-check",
+    "document": "i-pen",
+    "verifier": "i-shield",
+    "traiter": "i-alert",
+    "lire": "i-eye",
+    "rien": "i-check",
 }
+ACTION_BADGES = {k: (icone, triage.ACTION_LABELS[k]) for k, icone in _ACTION_ICONS.items()}
 
 JOURS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
 MOIS = [
@@ -95,6 +96,7 @@ class State:
     cfg: Config
     llm: LLM
     syncer: pipeline.BackgroundSync | None = None
+    matrix: Any = None  # MatrixThread, importe seulement si le bot est active
 
 
 state = State()
@@ -109,11 +111,19 @@ async def lifespan(app: FastAPI):
     if state.cfg.web.background_sync:
         state.syncer = pipeline.BackgroundSync(state.llm, state.cfg)
         state.syncer.start()
+    if state.cfg.matrix.enabled:
+        from ..matrix.bot import MatrixThread, setup_logging
+
+        setup_logging()
+        state.matrix = MatrixThread(state.cfg, state.llm)
+        state.matrix.start()
     try:
         yield
     finally:
         if state.syncer:
             state.syncer.stop()
+        if state.matrix:
+            state.matrix.stop()
         state.llm.close()
 
 
@@ -659,10 +669,9 @@ def _status() -> dict[str, Any]:
     }
 
 
-# Nombre de messages affiches a l'ouverture d'une conversation, et nombre de
-# messages precedents transmis au modele comme contexte.
+# Nombre de messages affiches a l'ouverture d'une conversation (le contexte transmis
+# au modele, lui, est borne par agent.HISTORY_FOR_MODEL).
 HISTORY_SHOWN = 60
-HISTORY_FOR_MODEL = 6
 
 
 def _active_conversation(request: Request, conversations: list[dict[str, Any]]) -> int:
@@ -882,10 +891,7 @@ def api_ask(
         conversation_id = agent.create_conversation(database)
         conv = _conversation_row(conversation_id)
     # Chaque conversation a son propre contexte : le modele ne voit que ses messages.
-    history = [
-        {"role": h["role"], "content": h["content"]}
-        for h in agent.load_history(database, limit=HISTORY_FOR_MODEL, conversation_id=conversation_id)
-    ]
+    history = agent.model_history(database, conversation_id)
     titre = conv["title"]
     if titre == agent.NEW_CONVERSATION_TITLE and not history:
         titre = agent.title_from_question(question)
@@ -944,6 +950,34 @@ def fragment_chat(request: Request, conversation_id: int):
         "_chat.html",
         {"history": agent.load_history(conn(), limit=HISTORY_SHOWN, conversation_id=conversation_id)},
     )
+
+
+@app.get("/api/state")
+def api_state():
+    """Etat leger, interroge toutes les quelques secondes par la page.
+
+    Le bot Matrix et la synchro de fond ecrivent dans la base pendant que la page est
+    ouverte : conversations creees ou completees depuis Element, mails arrives. La page
+    compare avec ce qu'elle affiche et ne recharge que ce qui a change.
+    """
+    database = conn()
+    mails = database.execute(
+        "SELECT (SELECT COALESCE(MAX(id), 0) FROM documents WHERE source = 'mail') d,"
+        "       (SELECT COALESCE(MAX(created_at), 0) FROM mail_triage) t"
+    ).fetchone()
+    return {
+        "conversations": [
+            {"id": c["id"], "titre": c["title"], "n": c["n"]}
+            for c in agent.list_conversations(database)
+        ],
+        "mails": f"{mails['d']}-{mails['t']}",
+        # Pastilles des onglets (Mails, Agenda, Fichiers) et des dossiers de mails.
+        "sources": {
+            r["source"]: r["n"]
+            for r in database.execute("SELECT source, COUNT(*) n FROM documents GROUP BY source")
+        },
+        "dossiers": _mail_counts(),
+    }
 
 
 @app.post("/api/sync")

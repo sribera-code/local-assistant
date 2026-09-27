@@ -758,6 +758,14 @@ body.resizing * { cursor: col-resize !important; }
   border: 1px solid color-mix(in srgb, var(--u5) 40%, var(--line));
   white-space: pre-wrap;
 }
+/* Resume d'un nouveau mail, envoye par le bot Matrix : une fiche, pas une reponse. */
+.msg.notice .bubble {
+  padding: 8px 12px; border-radius: 9px;
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+  font-size: 13px;
+}
+.msg.notice .bubble.md p { margin: 0 0 4px; }
 
 /* Markdown converti : le pre-wrap doublerait les espacements. */
 .bubble.md { white-space: normal; color: var(--text); }

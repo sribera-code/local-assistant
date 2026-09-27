@@ -11,7 +11,7 @@
     {# Gmail n'a pas de dossiers : ces onglets suivent les labels (INBOX, SENT...). #}
     <div class="col-head folders" role="tablist" aria-label="Dossiers">
       {% for key, label in folders %}
-      <a class="folder-tab{% if key == folder %} active{% endif %}" role="tab"
+      <a class="folder-tab{% if key == folder %} active{% endif %}" role="tab" data-folder="{{ key }}"
          aria-selected="{{ 'true' if key == folder else 'false' }}"
          href="/?folder={{ key }}{% if urgent and key != 'sent' %}&urgent=true{% endif %}">
         {{ label }}{% if counts[key] %}<span class="tab-count">{{ counts[key] }}</span>{% endif %}

@@ -82,6 +82,18 @@ def doctor() -> None:
     else:
         line("Dossiers locaux", None, "files.roots est vide dans config.yaml")
 
+    if cfg.matrix.user_id:
+        from .matrix.bot import load_session
+
+        session = load_session(cfg)
+        if session is None:
+            line("Matrix", False, "lance `assistant matrix-login`")
+        elif not cfg.matrix.allowed_users:
+            line("Matrix", False, "matrix.allowed_users est vide : personne ne peut lui parler")
+        else:
+            etat = "demarre avec serve" if cfg.matrix.enabled else "`assistant matrix` pour le lancer"
+            line("Matrix", True, f"{session.user_id} (appareil {session.device_id}) - {etat}")
+
     try:
         conn = db.connect(cfg.paths.db_path, embed_dim=cfg.ollama.embed_dim)
         stats = db.stats(conn)
@@ -298,6 +310,71 @@ def stats() -> None:
     pending = indexer.pending_document_ids(conn)
     if pending:
         console.print(f"[yellow]![/] {len(pending)} document(s) en attente d'indexation")
+
+
+# ---------------------------------------------------------------------- matrix
+
+
+@app.command(name="matrix-login")
+def matrix_login() -> None:
+    """Connecte le compte Matrix du bot et signe son appareil (une fois)."""
+    import asyncio
+
+    from .matrix.bot import MatrixError, login
+    from .matrix.crosssign import CrossSigningError
+
+    cfg = get_config()
+    if not cfg.matrix.user_id:
+        _fail("renseigne matrix.user_id (le compte du bot) dans config.yaml")
+    # Demande a chaque fois, jamais enregistre : seul le jeton d'acces l'est.
+    password = typer.prompt(f"Mot de passe de {cfg.matrix.user_id}", hide_input=True)
+    try:
+        session = asyncio.run(login(cfg, password))
+    except (MatrixError, CrossSigningError) as exc:
+        _fail(str(exc))
+        return
+    console.print(f"[green]ok[/] {session.user_id} connecte, appareil {session.device_id} signe")
+    console.print(f"    session : {cfg.paths.matrix_path}")
+    if not cfg.matrix.allowed_users:
+        console.print("[yellow]![/] matrix.allowed_users est vide : ajoute ton propre compte")
+
+
+@app.command(name="matrix")
+def matrix_run() -> None:
+    """Lance le bot Matrix et la synchro de fond, sans l'interface web."""
+    import asyncio
+
+    from .matrix.bot import MatrixError, run_forever, setup_logging
+    from .matrix.crosssign import CrossSigningError
+
+    cfg, llm, _ = _open()
+    setup_logging()
+    # Comme `serve` : sans synchro, aucun nouveau mail, donc aucun resume a envoyer.
+    syncer = pipeline.BackgroundSync(llm, cfg) if cfg.web.background_sync else None
+    if syncer:
+        syncer.start()
+    console.print("[green]->[/] bot Matrix lance (Ctrl+C pour arreter)")
+    try:
+        asyncio.run(run_forever(cfg, llm))
+    except (MatrixError, CrossSigningError) as exc:
+        _fail(str(exc))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if syncer:
+            syncer.stop()
+        llm.close()
+
+
+@app.command(name="matrix-trust")
+def matrix_trust(user_id: str = typer.Argument(..., help="Compte dont accepter la nouvelle identite.")) -> None:
+    """Accepte la nouvelle identite Matrix d'un utilisateur (apres une reinitialisation)."""
+    from .matrix.bot import forget_identity
+
+    if forget_identity(get_config(), user_id):
+        console.print(f"[green]ok[/] l'identite de {user_id} sera reprise a son prochain message")
+    else:
+        console.print(f"[yellow]![/] aucune identite enregistree pour {user_id}")
 
 
 @app.command()

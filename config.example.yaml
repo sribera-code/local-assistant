@@ -34,6 +34,9 @@ paths:
   # Jeton OAuth genere localement par `assistant auth` : c'est LE fichier sensible,
   # il donne acces en lecture aux mails jusqu'a revocation.
   google_token: "~/.local-assistant/secrets/token.json"
+  # Session du bot Matrix : jeton d'acces, cles de chiffrement, identite du bot.
+  # Aussi sensible que token.json : quiconque la copie peut lire et ecrire a sa place.
+  matrix_dir: "~/.local-assistant/matrix"
 
 gmail:
   # Nombre de mails recuperes lors de la premiere synchro
@@ -89,6 +92,24 @@ web:
   port: 8765
   # Ouvrir le navigateur au demarrage
   open_browser: true
+
+matrix:
+  # Discuter avec l'assistant depuis Element (telephone), chiffre de bout en bout.
+  # Voir la section « Matrix » du README. true : le bot demarre avec `serve`.
+  enabled: false
+  # Compte DEDIE au bot (pas le tien), cree au prealable.
+  user_id: ""
+  # Ton propre compte : seuls ceux-ci peuvent l'inviter et lui parler.
+  allowed_users: []
+  # Vide : deduit de user_id via .well-known (matrix.org -> matrix-client.matrix.org)
+  homeserver: ""
+  device_name: "Assistant local"
+  # Resume de chaque nouveau mail (non lu, boite de reception, moins de 24 h) envoye
+  # dans la discussion avec le bot : resume, action attendue, urgence.
+  mail_notices: true
+  # En dessous de cette urgence (1-5), le resume arrive sans faire sonner le telephone.
+  # 1 : tout sonne. 3 : seuls les mails qui demandent une action.
+  mail_ping_min_urgency: 1
 
 retrieval:
   # Nombre de chunks remontes au LLM par recherche

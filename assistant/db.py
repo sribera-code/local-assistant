@@ -106,6 +106,17 @@ def _migrate(conn: sqlite3.Connection, embed_dim: int) -> None:
             created_at INTEGER
         );
 
+        -- Resumes de mails envoyes sur Matrix. Un mail n'est envoye qu'une fois, et une
+        -- reponse a ce message dans Element porte sur ce mail (event_id -> doc_id).
+        -- Un resume groupe partage son event_id entre plusieurs mails.
+        CREATE TABLE IF NOT EXISTS matrix_mail_notices (
+            doc_id   INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+            room_id  TEXT    NOT NULL,
+            event_id TEXT    NOT NULL,
+            sent_at  INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_matrix_notices_event ON matrix_mail_notices(event_id);
+
         -- Conversations de l'assistant (un onglet chacune dans l'interface).
         CREATE TABLE IF NOT EXISTS conversations (
             id         INTEGER PRIMARY KEY,

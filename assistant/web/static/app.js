@@ -206,6 +206,10 @@ async function sendQuestion(event, docId) {
       afficher("error", data.error || data.detail || `Erreur ${resp.status}`);
       return false;
     }
+    // La reponse est enregistree : le compteur suit la base, sans quoi pollState
+    // croirait a un message venu d'ailleurs et rechargerait la conversation.
+    const tabFini = tabOf(conv);
+    if (tabFini) tabFini.dataset.count = String(Number(tabFini.dataset.count || 0) + 1);
     if (data.titre) setTabTitle(conv, data.titre);
     afficher("assistant", data.reponse, data.citations);
   } catch (err) {
@@ -310,7 +314,8 @@ async function newConversation() {
     const resp = await fetch("/api/conversations", { method: "POST", headers: { "X-Assistant": "1" } });
     if (!resp.ok) throw new Error(`erreur ${resp.status}`);
     const data = await resp.json();
-    document.getElementById("conv-tabs").appendChild(tabElement(data.id, data.titre));
+    // pollState a pu ajouter l'onglet entre-temps.
+    if (!tabOf(data.id)) document.getElementById("conv-tabs").appendChild(tabElement(data.id, data.titre));
     await openConversation(data.id, true);
   } catch (err) {
     toast(`Impossible de créer la conversation : ${err.message}`, "error");
@@ -609,13 +614,95 @@ function initResizers() {
   });
 }
 
+// ------------------------------------------------------- mises a jour externes
+
+// Le bot Matrix et la synchro de fond ecrivent dans la base pendant que la page est
+// ouverte. Toutes les quelques secondes, on compare avec ce qui est affiche et on ne
+// recharge que ce qui a change : onglets, conversation ouverte, liste des mails.
+const POLL_MS = 5000;
+let versionMails = null;
+let polling = false;
+
+async function reloadChat(id) {
+  const box = chat();
+  const enBas = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  const resp = await fetch(`/fragment/chat/${id}`);
+  if (!resp.ok || currentConversation() !== id || occupees.has(id)) return;
+  box.innerHTML = await resp.text();
+  renderHistory(box);
+  // Ne pas arracher l'utilisateur a sa lecture s'il est remonte dans l'historique.
+  if (enBas) scrollChat();
+}
+
+async function pollState() {
+  if (document.hidden || polling) return;
+  polling = true;
+  try {
+    const resp = await fetch("/api/state");
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    // Nouveau mail, ou mail qui vient d'etre trie : la liste se recharge tout de suite
+    // au lieu d'attendre son rafraichissement de la minute.
+    if (versionMails !== null && data.mails !== versionMails) {
+      const liste = document.getElementById("mails");
+      if (liste && window.htmx) htmx.trigger(liste, "refresh");
+    }
+    versionMails = data.mails;
+
+    // Pastilles calculees au chargement de la page : on les tient a jour aussi.
+    document.querySelectorAll(".seg-count[data-source]").forEach((el) => {
+      el.textContent = String(data.sources[el.dataset.source] || 0);
+    });
+    document.querySelectorAll(".folder-tab[data-folder]").forEach((onglet) => {
+      const nombre = data.dossiers[onglet.dataset.folder] || 0;
+      let pastille = onglet.querySelector(".tab-count");
+      if (!nombre) {
+        pastille?.remove();
+        return;
+      }
+      if (!pastille) {
+        pastille = document.createElement("span");
+        pastille.className = "tab-count";
+        onglet.appendChild(pastille);
+      }
+      pastille.textContent = String(nombre);
+    });
+
+    for (const c of data.conversations) {
+      let tab = tabOf(c.id);
+      if (!tab) {
+        // Conversation nee ailleurs (discussion Matrix) : nouvel onglet, signale.
+        tab = tabElement(c.id, c.titre);
+        tab.dataset.count = String(c.n);
+        if (c.n) tab.classList.add("fresh");
+        document.getElementById("conv-tabs").appendChild(tab);
+        continue;
+      }
+      // Onglet en attente de confirmation, ou question en cours : on n'y touche pas.
+      if (tab.classList.contains("confirming") || occupees.has(c.id)) continue;
+      setTabTitle(c.id, c.titre);
+      const avant = Number(tab.dataset.count || 0);
+      if (c.n === avant) continue;
+      tab.dataset.count = String(c.n);
+      if (c.id === currentConversation()) await reloadChat(c.id);
+      else if (c.n > avant) tab.classList.add("fresh");
+    }
+  } catch (err) {
+    // Serveur arrete : le bandeau d'etat le signale deja.
+  } finally {
+    polling = false;
+  }
+}
+
 // -------------------------------------------------------------- chargement
 
 // L'historique arrive rendu par le serveur, en texte brut. On le repasse par le
 // meme convertisseur pour une mise en forme identique. Partir de textContent
 // garantit qu'aucun HTML n'est reinjecte.
 function renderHistory(root) {
-  root.querySelectorAll(".msg.assistant").forEach((msg) => {
+  // .notice : resume d'un mail envoye par le bot Matrix, mis en forme comme une reponse.
+  root.querySelectorAll(".msg.assistant, .msg.notice").forEach((msg) => {
     const el = msg.querySelector(".bubble");
     if (!el || el.classList.contains("md")) return;
     let citations = [];
@@ -636,6 +723,12 @@ document.addEventListener("DOMContentLoaded", () => {
   scrollChat();
   initResizers();
   document.querySelector(".conv-tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  pollState();
+  setInterval(pollState, POLL_MS);
+  // Retour sur l'onglet du navigateur : mise a jour immediate plutot qu'au prochain tour.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) pollState();
+  });
 
   // Agenda : on arrive positionne juste avant le premier evenement de la semaine.
   const grille = document.getElementById("cal-scroll");

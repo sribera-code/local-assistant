@@ -14,6 +14,12 @@ from .llm import LLM
 from .tools import TOOL_SCHEMAS, Toolbox
 
 MAX_TOOL_ROUNDS = 4
+# Messages precedents de la conversation transmis au modele (interface web et Matrix).
+HISTORY_FOR_MODEL = 6
+# Sources de la reponse precedente relues d'office (voir _replay_reads) : combien, et
+# combien de caracteres de chacune.
+REPLAY_DOCS_MAX = 8
+REPLAY_CHARS = 1500
 
 SOURCE_LABELS = {
     "mail": "ses mails Gmail",
@@ -79,13 +85,45 @@ def _system_message(conn: sqlite3.Connection) -> dict[str, str]:
     }
 
 
+def _replay_reads(toolbox: Toolbox, citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Relecture des sources de la reponse precedente, a inserer juste avant elle.
+
+    L'historique ne garde que le texte des reponses, pas ce que les outils avaient
+    renvoye. A « detaille » ou « et le deuxieme ? », un 4B relancait alors une recherche
+    sur les mots de la question (« non lus ») et repondait sur d'autres mails ; une
+    consigne dans le prompt systeme n'y changeait rien. Avec les documents sous les
+    yeux, la ou il les avait lus, il repart d'eux.
+    """
+    ids = list(dict.fromkeys(c["doc_id"] for c in citations))[:REPLAY_DOCS_MAX]
+    reads = [r for r in (toolbox.lire_document(i) for i in ids) if "erreur" not in r]
+    if not reads:
+        return []
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"function": {"name": "lire_document", "arguments": {"doc_id": r["doc_id"]}}}
+                for r in reads
+            ],
+        }
+    ]
+    for r in reads:
+        if len(r["contenu"]) > REPLAY_CHARS:
+            r["contenu"] = r["contenu"][:REPLAY_CHARS] + " […]"
+        messages.append(
+            {"role": "tool", "tool_name": "lire_document", "content": json.dumps(r, ensure_ascii=False)}
+        )
+    return messages
+
+
 def ask(
     conn: sqlite3.Connection,
     llm: LLM,
     cfg: Config,
     question: str,
     *,
-    history: list[dict[str, str]] | None = None,
+    history: list[dict[str, Any]] | None = None,
     think: bool = False,
     focus_doc: int | None = None,
 ) -> AgentAnswer:
@@ -97,9 +135,15 @@ def ask(
     repond alors qu'il n'a pas acces au mail.
     """
     toolbox = Toolbox(conn, llm, cfg)
+    history = history or []
     messages: list[dict[str, Any]] = [_system_message(conn)]
-    messages.extend(history or [])
+    last_answer = max((i for i, h in enumerate(history) if h["role"] == "assistant"), default=None)
+    for i, h in enumerate(history):
+        if i == last_answer:
+            messages.extend(_replay_reads(toolbox, h.get("citations") or []))
+        messages.append({"role": h["role"], "content": h["content"]})
     messages.append({"role": "user", "content": question})
+    replayed = set(toolbox.seen_docs)
 
     trace: list[dict[str, Any]] = []
     if focus_doc is not None:
@@ -125,7 +169,7 @@ def ask(
         if not reply.wants_tools:
             return AgentAnswer(
                 text=reply.content.strip(),
-                citations=_citations(toolbox, reply.content),
+                citations=_citations(toolbox, reply.content, replayed),
                 tool_trace=trace,
             )
 
@@ -165,7 +209,7 @@ def ask(
     final = llm.chat(messages, think=False)
     return AgentAnswer(
         text=final.content.strip(),
-        citations=_citations(toolbox, final.content),
+        citations=_citations(toolbox, final.content, replayed),
         tool_trace=trace,
     )
 
@@ -173,15 +217,21 @@ def ask(
 _CITE_RE = re.compile(r"\[(\d{1,6})\]")
 
 
-def _citations(toolbox: Toolbox, answer: str) -> list[dict[str, Any]]:
+def _citations(
+    toolbox: Toolbox, answer: str, replayed: set[int] | None = None
+) -> list[dict[str, Any]]:
     """Documents a afficher sous la reponse.
 
     On privilegie ceux que le modele a reellement cites entre crochets ; s'il n'en a
-    cite aucun, on retombe sur l'ensemble des documents que les outils lui ont montres.
+    cite aucun, on retombe sur les documents que les outils lui ont montres pour
+    cette question. Pas sur ceux de la reponse precedente (`replayed`) : un simple
+    « merci » repartirait sinon avec toutes ses sources.
     """
     cited = [int(m) for m in _CITE_RE.findall(answer or "")]
     ordered = [toolbox.seen_docs[doc_id] for doc_id in dict.fromkeys(cited) if doc_id in toolbox.seen_docs]
-    return ordered or list(toolbox.seen_docs.values())
+    return ordered or [
+        doc for doc_id, doc in toolbox.seen_docs.items() if doc_id not in (replayed or ())
+    ]
 
 
 def save_message(
@@ -201,6 +251,28 @@ def save_message(
     if conversation_id is not None:
         conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conversation_id))
     conn.commit()
+
+
+def model_history(
+    conn: sqlite3.Connection, conversation_id: int | None, limit: int = HISTORY_FOR_MODEL
+) -> list[dict[str, Any]]:
+    """Derniers echanges transmis au modele comme contexte.
+
+    Seuls les roles de l'echange : les resumes de mails (role "notice", envoyes par le
+    bot Matrix) s'affichent dans la conversation, mais y prendraient sinon la place des
+    questions et des reponses. Les reponses gardent leurs `citations`, que `ask`
+    rappelle au modele dans le prompt systeme.
+    """
+    rows = conn.execute(
+        "SELECT role, content, citations FROM messages"
+        " WHERE conversation_id IS ? AND role IN ('user', 'assistant')"
+        " ORDER BY id DESC LIMIT ?",
+        (conversation_id, limit),
+    ).fetchall()
+    return [
+        {"role": r["role"], "content": r["content"], "citations": json.loads(r["citations"] or "[]")}
+        for r in reversed(rows)
+    ]
 
 
 def load_history(

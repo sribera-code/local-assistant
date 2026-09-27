@@ -62,7 +62,7 @@
        {% if key == tab %}aria-current="page"{% endif %}>
       <svg class="ico"><use href="#{{ icones[key] }}"/></svg>
       <span>{{ label }}</span>
-      <span class="seg-count">{{ status.documents.get(cles[key], 0) }}</span>
+      <span class="seg-count" data-source="{{ cles[key] }}">{{ status.documents.get(cles[key], 0) }}</span>
     </a>
     {% endfor %}
   </nav>

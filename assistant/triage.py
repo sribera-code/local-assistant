@@ -52,6 +52,19 @@ ACTION_TYPES = [
 # Les types qui demandent un geste de l'utilisateur, par opposition a "lire"/"rien".
 ACTIVE_ACTIONS = {"repondre", "payer", "confirmer", "document", "verifier", "traiter"}
 
+# Libelles affiches, par l'interface web comme par les resumes envoyes sur Matrix.
+ACTION_LABELS = {
+    "repondre": "Répondre",
+    "payer": "Payer",
+    "confirmer": "Confirmer",
+    "document": "Fournir un document",
+    "verifier": "Vérifier le compte",
+    "traiter": "À traiter",
+    "lire": "À lire",
+    "rien": "Rien à faire",
+}
+URGENCY_LABELS = {5: "critique", 4: "important", 3: "a traiter", 2: "a lire", 1: "rien a faire"}
+
 # Repli pour les mails tries avant l'ajout du champ (colonne NULL) : la categorie et
 # l'urgence suffisent a deviner le geste attendu, sans repasser par le modele.
 _FALLBACK_BY_CATEGORY = {

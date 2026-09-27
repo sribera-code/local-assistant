@@ -13,8 +13,11 @@ tri automatique des mails entrants et notifications Windows.
 | Index, base de données | `data/assistant.db`, sur ton disque |
 | LLM (questions, résumés, tri) | ta machine, via Ollama |
 | Interface web | `127.0.0.1`, rien n'est exposé sur le réseau |
+| Chat depuis le téléphone (optionnel) | ton serveur Matrix, **chiffré de bout en bout** : il transporte les messages sans pouvoir les lire (voir [Matrix](#matrix--lassistant-sur-ton-téléphone)) |
 
-Aucune clé d'API tierce, aucun contenu de mail ou de fichier envoyé à un service externe.
+Aucune clé d'API tierce, aucun contenu de mail ou de fichier envoyé à un service externe —
+à une exception près, si tu l'actives : les réponses envoyées sur ton téléphone via Matrix,
+chiffrées avant de quitter le PC.
 Les portées OAuth demandées sont `gmail.readonly` et `calendar.readonly` : l'assistant ne
 peut ni envoyer, ni supprimer, ni modifier quoi que ce soit dans ton compte.
 
@@ -145,6 +148,9 @@ l'environnement. Fonctionne dans cmd.exe comme dans PowerShell :
 .\assistant doctor                  # diagnostic
 .\assistant triage                  # trie les mails pas encore classés (--force : tous)
 .\assistant reset-index             # vide chunks + embeddings, garde les documents
+.\assistant matrix-login            # connecte le compte Matrix du bot (une fois)
+.\assistant matrix                  # bot Matrix + synchro de fond, sans l'interface web
+.\assistant matrix-trust @toi:matrix.org   # accepte ta nouvelle identité Matrix
 ```
 
 > `python -m assistant.cli ...` avec le Python système échoue (`No module named 'typer'`) :
@@ -155,6 +161,126 @@ l'environnement. Fonctionne dans cmd.exe comme dans PowerShell :
 `gmail.poll_seconds` (120 s par défaut), l'agenda et les fichiers toutes les
 `calendar.poll_seconds`, trie les nouveaux mails et affiche une notification Windows au-delà
 de `triage.notify_min_urgency`.
+
+## Matrix : l'assistant sur ton téléphone
+
+Tu écris à l'assistant depuis **Element** (Element X ou Element classique, Android ou iOS),
+comme à un contact. Le PC fait tourner un bot Matrix (bibliothèque `matrix-nio`) qui reçoit
+la question, la passe au même agent que l'interface web, et répond dans la conversation.
+
+- **Aucun port ouvert sur le PC** : le bot se connecte lui-même au serveur Matrix et attend
+  les messages (synchro longue). L'interface web reste sur `127.0.0.1`.
+- **Chiffré de bout en bout** (Olm/Megolm, via vodozemac) : le serveur Matrix ne peut pas
+  lire les questions ni les réponses. Il voit en revanche qui parle à qui, quand, et la
+  taille des messages.
+- **Même historique** : chaque discussion Matrix apparaît comme un onglet « Matrix · … »
+  dans le chat de l'interface web, résumés de mails compris. La page vérifie toutes les
+  5 s ce qui a changé (nouvel onglet, nouveaux messages, nouveaux mails, compteurs) et
+  ne recharge que cela.
+- Le PC doit être allumé. Une question envoyée pendant qu'il était éteint reçoit sa
+  réponse au démarrage, si elle date de moins d'une heure.
+
+### Mise en place
+
+1. **Crée un compte dédié au bot**, distinct du tien — par exemple sur matrix.org depuis
+   [app.element.io](https://app.element.io), dans une fenêtre privée. Note son identifiant
+   (`@mon-assistant:matrix.org`) et son mot de passe. Déconnecte-toi ensuite : le bot doit
+   être la seule session de ce compte.
+2. Dans `config.yaml` :
+   ```yaml
+   matrix:
+     enabled: true                        # démarre le bot avec `serve`
+     user_id: "@mon-assistant:matrix.org" # le compte du bot
+     allowed_users: ["@toi:matrix.org"]   # TON compte : le seul à qui il répond
+   ```
+3. `.\assistant matrix-login` : demande le mot de passe du bot (jamais enregistré),
+   connecte l'appareil et lui donne une identité de signature croisée (voir plus bas).
+   - Sur **matrix.org** (et tout serveur qui délègue la connexion à MAS), si Element a déjà
+     créé une identité pour ce compte à l'étape 1, le serveur exige d'approuver son
+     remplacement dans le navigateur. La commande affiche alors l'URL : ouvre-la
+     **connecté avec le compte du bot**, approuve, et relance `matrix-login` dans les
+     10 minutes.
+4. `.\assistant serve` (ou `.\assistant matrix` sans l'interface web).
+5. Sur le téléphone, dans Element : **nouvelle discussion** avec `@mon-assistant:matrix.org`.
+   Le bot accepte l'invitation — il refuse toutes celles qui ne viennent pas
+   d'`allowed_users` — et tu peux poser tes questions.
+
+`!nouveau` dans la discussion repart d'une conversation vierge (le modèle ne voit que les
+6 derniers messages de la conversation en cours).
+
+### Résumé de chaque nouveau mail
+
+Chaque mail qui arrive dans la boîte de réception est envoyé dans la discussion une fois
+trié : objet (lien vers Gmail), expéditeur, résumé, **action attendue** et statut.
+
+```
+🟠 Facture de novembre
+De : EDF
+Votre facture de novembre (87,40 EUR) sera prélevée le 5 décembre.
+💳 Vérifier le montant avant le prélèvement du 5 décembre
+urgence 4/5 (important) · facture
+```
+
+- **Réponds à un résumé** (appui long > Répondre dans Element) pour poser une question sur
+  ce mail : « que dois-je répondre ? », « c'est une arnaque ? ». Le modèle le lit d'office,
+  comme le bouton « Que dois-je en faire ? » de l'interface web.
+- Ne sont envoyés que les mails **non lus**, de la boîte de réception, reçus depuis moins de
+  24 h : un mail déjà lu dans Gmail n'est plus une nouvelle. Au premier lancement, les mails
+  déjà présents ne sont pas envoyés.
+- Plus de 3 mails d'un coup (réveil du PC après une nuit) : un seul message récapitulatif.
+- Les résumés s'affichent aussi dans l'onglet de la discussion dans l'interface web, avec le
+  mail en source cliquable. Ils ne sont pas transmis au modèle comme contexte : ils
+  évinceraient les vraies questions des 6 messages qu'il voit.
+- `matrix.mail_ping_min_urgency` règle ce qui fait **sonner** le téléphone : en dessous, le
+  résumé arrive en silence (message de type « notice », que les règles de notification par
+  défaut de Matrix ne signalent pas). À 3, seuls les mails qui demandent une action sonnent.
+- Les résumés vont dans la dernière discussion où tu as écrit au bot. Pour les nuits, le
+  mode « Ne pas déranger » du téléphone ou les réglages de notification de la discussion
+  dans Element font l'affaire.
+- Le bot lit le résultat du tri dans la base : il faut que la synchro tourne, ce que font
+  `serve` et `.\assistant matrix`. `mail_notices: false` désactive l'envoi.
+
+### Pourquoi le bot signe son propre appareil
+
+Element applique désormais
+[MSC4153](https://github.com/matrix-org/matrix-spec-proposals/blob/main/proposals/4153-invisible-crypto.md)
+(« exclude insecure devices », par défaut à partir d'octobre 2026) : un appareil que son
+propriétaire n'a pas signé avec son identité (*cross-signing*) **ne reçoit plus les clés** des
+conversations, et ses messages s'affichent sans contenu. `matrix-nio` ne gère pas la
+signature croisée ; un bot `matrix-nio` brut deviendrait donc sourd et muet.
+
+`assistant/matrix/crosssign.py` comble ce manque : il crée les trois clés de l'identité du
+bot (maîtresse, auto-signature, signature d'utilisateurs), les publie, et signe l'appareil du
+bot avec. Leurs graines sont gardées dans la session, pour signer le nouvel appareil lors d'un
+futur `matrix-login` sans changer d'identité.
+
+Element peut proposer de « vérifier » le bot par emojis : ce n'est pas nécessaire, et le bot
+ne sait pas y répondre.
+
+### Qui peut lire les réponses
+
+Seuls les appareils de **ton** compte signés par **ton** identité, et cette identité est
+**épinglée** au premier message : le bot retient ta clé maîtresse et refuse ensuite toute
+autre. Concrètement :
+
+- un appareil ajouté à ton compte à ton insu (serveur compromis, mot de passe volé) n'est pas
+  signé par ton identité : il ne reçoit pas les clés, et ce qu'il envoie est ignoré ;
+- une session Element que tu n'as pas vérifiée est traitée de même — vérifie-la depuis une
+  autre session, ou avec ta clé de récupération ;
+- si ton identité change (tu l'as réinitialisée, ou quelqu'un l'a fait), le bot ne répond
+  plus et affiche une notification Windows. Si c'est bien toi :
+  `.\assistant matrix-trust @toi:matrix.org`, et la nouvelle est épinglée au message suivant.
+
+Le bot ne répond que dans un salon chiffré où il est seul avec toi.
+
+### Fichiers
+
+`~/.local-assistant/matrix/` contient `session.json` (jeton d'accès, graines de l'identité du
+bot, identités épinglées) et `store/nio.db` (clés de chiffrement, protégées par une clé
+aléatoire propre à l'installation). **Aussi sensible que `token.json`** : ce dossier permet de
+lire et d'écrire au nom du bot. Il est couvert par les mêmes protections (hors du dépôt, règles
+de `.claude/settings.json`). Pour tout révoquer : supprime la session du bot dans Element
+(*Paramètres > Sessions* du compte du bot), puis le dossier.
 
 ## Comment le tri fonctionne
 
@@ -253,7 +379,7 @@ citation cliquable `[doc_id]` dans l'interface.
 
 ```
 assistant/
-  cli.py            commandes : doctor, auth, sync, index, triage, ask, stats, serve
+  cli.py            commandes : doctor, auth, sync, index, triage, ask, stats, serve, matrix
   config.py         chargement de config.yaml (dataclasses, clés inconnues refusées)
   db.py             SQLite : documents, chunks, FTS5, vec0 + connexions par thread
   llm.py            client Ollama : chat, appel d'outils, JSON contraint, embeddings
@@ -264,6 +390,10 @@ assistant/
   triage.py         classification des mails entrants
   notify.py         toasts Windows, avec heures silencieuses
   pipeline.py       orchestration + boucle de synchro de fond
+  matrix/
+    bot.py          bot Matrix : connexion, confiance, file de messages, conversations
+    crosssign.py    signature croisée (absente de matrix-nio) et vérification des appareils
+    render.py       réponse -> HTML pour Element (même échappement que l'interface)
   ingest/
     google_auth.py  OAuth lecture seule
     gmail.py        mails : MIME, HTML→texte, découpe des citations de fil
@@ -295,4 +425,7 @@ Dans `config.yaml` :
 - Les fichiers sont réindexés d'après leur taille et leur date de modification. Une
   modification qui ne change ni l'une ni l'autre passe inaperçue.
 - L'historique de conversation envoyé au modèle est plat (6 derniers messages), sans
-  résumé au-delà.
+  résumé au-delà. Seules les sources de la dernière réponse lui sont relues (tronquées) :
+  « détaille » marche, un renvoi plus lointain (« et le deuxième ? ») reste fragile avec un 4B.
+- Le bot Matrix ne traite que du texte : ni pièces jointes, ni messages vocaux, et la
+  réponse arrive d'un bloc (pas d'affichage au fil de l'eau).
